@@ -60,6 +60,10 @@ end
     compile(prog; opt=0)
     compile(prog; ftz=false)
     compile(prog; prec_sqrt=true)
+
+    # unofficial ones
+    @test contains(compile(prog; isa=v"6.0"), ".version 6.0")
+    @test contains(compile(prog; isa=v"6.1"), ".version 6.1")
 end
 
 end

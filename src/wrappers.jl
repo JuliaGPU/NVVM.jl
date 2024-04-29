@@ -105,6 +105,15 @@ function kwargs_to_options(kwargs)
             continue
         end
 
+        # -isa is not supported and bypasses the official API
+        if k == :isa
+            for phase in ("opt", "llc")
+                # XXX: also lnk on libNVVM from CUDA 12.4
+                push!(options, "-X$phase", "-mattr=+ptx$(v.major)$(v.minor)")
+            end
+            continue
+        end
+
         # support version numbers for specifying the compute architecture
         if k == :arch && v isa VersionNumber
             v = "compute_$(v.major)$(v.minor)"
@@ -143,7 +152,7 @@ end
 Link and compile all NVVM IR modules added to the NVVM program `prog` to PTX code.
 The target datalayout in the linked IR program is used to determine the address size.
 
-The following compiler options are supported:
+The following compiler options are supported by NVVM
 - `debug` or `g`: whether to enable debug information
 - `opt`: the optimization level to use
 - `arch`: the compute architecture to target, e.g. `compute_75` or `v"7.5"`
@@ -151,6 +160,9 @@ The following compiler options are supported:
 - `prec_sqrt`: whether to use use IEEE round-to-nearest sqrt, or an approximation
 - `prec_div`: whether to use IEEE round-to-nearest division, or an approximation
 - `fma`: enable FMA contraction
+
+The following options are not officially supported by NVVM:
+- `isa`: which PTX instruction set to use, e.g., `v"6.1"`
 """
 function compile(prog::Program; kwargs...)
     options = kwargs_to_options(kwargs)
