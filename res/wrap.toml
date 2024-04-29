@@ -4,4 +4,3 @@ output_file_path = "../src/libnvvm.jl"
 
 [codegen]
 use_ccall_macro = true
-always_NUL_terminated_string = true

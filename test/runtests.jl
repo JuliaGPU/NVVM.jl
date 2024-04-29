@@ -1,4 +1,5 @@
 using NVVM, Test
+import LLVM
 
 @testset "NVVM" begin
 
@@ -21,12 +22,25 @@ dummy_ir = """
     !nvvmir.version = !{!1}
     !1 = !{i32 2, i32 0}"""
 
+dummy_bitcode = LLVM.Context() do ctx
+    mod = parse(LLVM.Module, dummy_ir)
+    convert(Vector{UInt8}, mod)
+end
+
 @testset "smoke test" begin
-    prog = Program()
-    add!(prog, dummy_ir)
-    verify(prog)
-    ptx = compile(prog)
-    @test contains(ptx, ".visible .entry kernel")
+    let prog = Program()
+        add!(prog, dummy_ir)
+        verify(prog)
+        ptx = compile(prog)
+        @test contains(ptx, ".visible .entry kernel")
+    end
+
+    let prog = Program()
+        add!(prog, dummy_bitcode)
+        verify(prog)
+        ptx = compile(prog)
+        @test contains(ptx, ".visible .entry kernel")
+    end
 end
 
 @testset "errors" begin
