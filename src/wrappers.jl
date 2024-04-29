@@ -81,13 +81,15 @@ function unsafe_destroy!(prog::Program)
 end
 
 """
-    add!(prog::Program, mod::AbstractString, [name]; lazy=false)
+    add!(prog::Program, mod, [name]; lazy=false)
 
-Add the NVVM IR module `mod` to the NVVM program `prog`. If `name` is specified,
-it will be used as the name of the module. If `lazy` is set, only symbols that are
-required by non-lazy modules will be included in the linked IR program.
+Add the NVVM IR module `mod` to the NVVM program `prog`. The module can be provided as a
+string containing textual IR, or a byte vector containing bigcode. If `name` is specified,
+it will be used as the name of the module. If `lazy` is set, only symbols that are required
+by non-lazy modules will be included in the linked IR program.
 """
-function add!(prog::Program, mod::AbstractString, name=nothing; lazy::Bool=false)
+function add!(prog::Program, mod::Union{AbstractString,Vector{UInt8},Vector{Int8}},
+              name=nothing; lazy::Bool=false)
     if lazy
         check(nvvmLazyAddModuleToProgram(prog.handle, mod, sizeof(mod), something(name, C_NULL)))
     else

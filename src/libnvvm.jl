@@ -14,7 +14,7 @@ using CEnum
 end
 
 function nvvmGetErrorString(result)
-    @ccall libnvvm.nvvmGetErrorString(result::nvvmResult)::Cstring
+    @ccall libnvvm.nvvmGetErrorString(result::nvvmResult)::Ptr{Cchar}
 end
 
 function nvvmVersion(major, minor)
@@ -39,23 +39,23 @@ function nvvmDestroyProgram(prog)
 end
 
 function nvvmAddModuleToProgram(prog, buffer, size, name)
-    @ccall libnvvm.nvvmAddModuleToProgram(prog::nvvmProgram, buffer::Cstring, size::Csize_t,
-                                          name::Cstring)::nvvmResult
+    @ccall libnvvm.nvvmAddModuleToProgram(prog::nvvmProgram, buffer::Ptr{Cchar},
+                                          size::Csize_t, name::Ptr{Cchar})::nvvmResult
 end
 
 function nvvmLazyAddModuleToProgram(prog, buffer, size, name)
-    @ccall libnvvm.nvvmLazyAddModuleToProgram(prog::nvvmProgram, buffer::Cstring,
-                                              size::Csize_t, name::Cstring)::nvvmResult
+    @ccall libnvvm.nvvmLazyAddModuleToProgram(prog::nvvmProgram, buffer::Ptr{Cchar},
+                                              size::Csize_t, name::Ptr{Cchar})::nvvmResult
 end
 
 function nvvmCompileProgram(prog, numOptions, options)
     @ccall libnvvm.nvvmCompileProgram(prog::nvvmProgram, numOptions::Cint,
-                                      options::Ptr{Cstring})::nvvmResult
+                                      options::Ptr{Ptr{Cchar}})::nvvmResult
 end
 
 function nvvmVerifyProgram(prog, numOptions, options)
     @ccall libnvvm.nvvmVerifyProgram(prog::nvvmProgram, numOptions::Cint,
-                                     options::Ptr{Cstring})::nvvmResult
+                                     options::Ptr{Ptr{Cchar}})::nvvmResult
 end
 
 function nvvmGetCompiledResultSize(prog, bufferSizeRet)
@@ -64,7 +64,7 @@ function nvvmGetCompiledResultSize(prog, bufferSizeRet)
 end
 
 function nvvmGetCompiledResult(prog, buffer)
-    @ccall libnvvm.nvvmGetCompiledResult(prog::nvvmProgram, buffer::Cstring)::nvvmResult
+    @ccall libnvvm.nvvmGetCompiledResult(prog::nvvmProgram, buffer::Ptr{Cchar})::nvvmResult
 end
 
 function nvvmGetProgramLogSize(prog, bufferSizeRet)
@@ -73,5 +73,5 @@ function nvvmGetProgramLogSize(prog, bufferSizeRet)
 end
 
 function nvvmGetProgramLog(prog, buffer)
-    @ccall libnvvm.nvvmGetProgramLog(prog::nvvmProgram, buffer::Cstring)::nvvmResult
+    @ccall libnvvm.nvvmGetProgramLog(prog::nvvmProgram, buffer::Ptr{Cchar})::nvvmResult
 end
