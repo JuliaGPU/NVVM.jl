@@ -76,25 +76,64 @@ mutable struct Program
     end
 end
 
+Base.unsafe_convert(::Type{nvvmProgram}, prog::Program) = prog.handle
+
 function unsafe_destroy!(prog::Program)
-    check(nvvmDestroyProgram(Ref(prog.handle)))
+    GC.@preserve prog begin
+        check(nvvmDestroyProgram(Ref(prog.handle)))
+    end
+end
+
+function downgrade_ir(ir::String, version::VersionNumber)
+    input_io = Pipe()
+    output_io = Pipe()
+    error_io = Pipe()
+
+    cmd = `$(llvm_as()) --bitcode-version=$(version.major).$(version.minor) -o -`
+    proc = run(pipeline(cmd, stdout=output_io, stderr=error_io, stdin=input_io); wait=false)
+    close(output_io.in)
+    close(error_io.in)
+
+    writer = @async begin
+        write(input_io, ir)
+        close(input_io)
+    end
+    output_reader = @async read(output_io)
+
+    if !success(proc)
+        error_reader = @async read(error_io, String)
+        errors = fetch(error_reader)
+        error("Failed to downgrade IR:\n$(errors)")
+    end
+    fetch(output_reader)
 end
 
 """
-    add!(prog::Program, mod, [name]; lazy=false)
+    add!(prog::Program, ir::String,         [name]; lazy=false, downgrade=true)
+    add!(prog::Program, bitcode::Vector,    [name]; lazy=false)
 
-Add the NVVM IR module `mod` to the NVVM program `prog`. The module can be provided as a
-string containing textual IR, or a byte vector containing bigcode. If `name` is specified,
-it will be used as the name of the module. If `lazy` is set, only symbols that are required
-by non-lazy modules will be included in the linked IR program.
+Add IR to the NVVM program `prog`. The module can be provided as a string containing textual
+IR, or a byte vector containing bitcode. If `name` is specified, it will be used as the name
+of the module. If `lazy` is set, only symbols that are required by non-lazy modules will be
+included in the linked IR program. If `downgrade` is set, the IR will be downgraded to an
+appropriate version before being added.
 """
-function add!(prog::Program, mod::Union{AbstractString,Vector{UInt8},Vector{Int8}},
-              name=nothing; lazy::Bool=false)
-    if lazy
-        check(nvvmLazyAddModuleToProgram(prog.handle, mod, sizeof(mod), something(name, C_NULL)))
+add!
+
+function add!(prog::Program, ir::String, name=nothing; lazy::Bool=false, downgrade::Bool=true)
+    api = lazy ? nvvmLazyAddModuleToProgram : nvvmAddModuleToProgram
+
+    # downgrade the module to NVVM IR
+    if downgrade
+        bitcode = downgrade_ir(ir, v"7.0")
+        api(prog, bitcode, sizeof(bitcode), something(name, C_NULL))
     else
-        check(nvvmAddModuleToProgram(prog.handle, mod, sizeof(mod), something(name, C_NULL)))
+        api(prog, ir, sizeof(ir), something(name, C_NULL))
     end
+end
+function add!(prog::Program, bitcode::Vector, name=nothing; lazy::Bool=false)
+    api = lazy ? nvvmLazyAddModuleToProgram : nvvmAddModuleToProgram
+    api(prog, bitcode, sizeof(bitcode), something(name, C_NULL))
 end
 
 # support specifying compiler options in a more user-friendly manner
@@ -143,7 +182,7 @@ The same compiler options as for [`compile`](@ref) are supported.
 """
 function verify(prog::Program; kwargs...)
     options = kwargs_to_options(kwargs)
-    check(nvvmVerifyProgram(prog.handle, length(options), options)) do _
+    check(nvvmVerifyProgram(prog, length(options), options)) do _
         log(prog)
     end
 end
@@ -168,26 +207,26 @@ The following options are not officially supported by NVVM:
 """
 function compile(prog::Program; kwargs...)
     options = kwargs_to_options(kwargs)
-    check(nvvmCompileProgram(prog.handle, length(options), options)) do _
+    check(nvvmCompileProgram(prog, length(options), options)) do _
         log(prog)
     end
 
     # get result
     result_size = Ref{Csize_t}()
-    check(nvvmGetCompiledResultSize(prog.handle, result_size))
+    check(nvvmGetCompiledResultSize(prog, result_size))
     result = Vector{UInt8}(undef, result_size[])
     GC.@preserve result begin
-        check(nvvmGetCompiledResult(prog.handle, pointer(result)))
+        check(nvvmGetCompiledResult(prog, pointer(result)))
         unsafe_string(pointer(result))
     end
 end
 
 function log(prog::Program)
     log_size = Ref{Csize_t}()
-    check(nvvmGetProgramLogSize(prog.handle, log_size))
+    check(nvvmGetProgramLogSize(prog, log_size))
     log = Vector{UInt8}(undef, log_size[])
     GC.@preserve log begin
-        check(nvvmGetProgramLog(prog.handle, pointer(log)))
+        check(nvvmGetProgramLog(prog, pointer(log)))
         unsafe_string(pointer(log))
     end
 end

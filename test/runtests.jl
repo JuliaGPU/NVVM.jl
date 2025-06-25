@@ -45,7 +45,7 @@ end
 
 @testset "errors" begin
     prog = Program()
-    add!(prog, "wat")
+    add!(prog, "wat"; downgrade=false)
 
     @test_throws NVVMError verify(prog)
     try

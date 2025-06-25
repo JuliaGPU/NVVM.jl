@@ -5,9 +5,11 @@ version = "0.1.0"
 
 [deps]
 CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+LLVMDowngrader_jll = "f52de702-fb25-5922-94ba-81dd59b07444"
 libNVVM_jll = "6f58c745-96ce-5283-a1a3-a6a4b3939f59"
 
 [compat]
 CEnum = "0.4, 0.5"
+LLVMDowngrader_jll = "0.6.0"
 julia = "1.6"
 libNVVM_jll = "~4.0.4"
