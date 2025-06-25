@@ -11,6 +11,7 @@ using CEnum
     NVVM_ERROR_INVALID_OPTION = 7
     NVVM_ERROR_NO_MODULE_IN_PROGRAM = 8
     NVVM_ERROR_COMPILATION = 9
+    NVVM_ERROR_CANCELLED = 10
 end
 
 function nvvmGetErrorString(result)

@@ -10,4 +10,4 @@ libNVVM_jll = "6f58c745-96ce-5283-a1a3-a6a4b3939f59"
 [compat]
 CEnum = "0.4, 0.5"
 julia = "1.6"
-libNVVM_jll = "~4.0.2"
+libNVVM_jll = "~4.0.4"
