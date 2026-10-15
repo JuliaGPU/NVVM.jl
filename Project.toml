@@ -11,7 +11,7 @@ LLVMDowngrader_jll = "f52de702-fb25-5922-94ba-81dd59b07444"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 
 [compat]
-CEnum = "0.4, 0.5"
+CEnum = "0.5, 1"
 CUDA_Compiler_jll = "0.6.2"
 CUDA_Runtime_Discovery = "2.1.1"
 LLVMDowngrader_jll = "0.12"
