@@ -42,6 +42,12 @@ end
         ptx = compile(prog; arch=v"10.0")
         @test contains(ptx, ".visible .entry kernel")
     end
+    let prog = Program()
+        add!(prog, dummy_bitcode)
+        verify(prog; arch=v"9.0", nvvm_latest=true)
+        ptx = compile(prog; arch=v"9.0", nvvm_latest=true)
+        @test contains(ptx, ".visible .entry kernel")
+    end
 
     # ... or to be downgraded
     let prog = Program()
@@ -114,6 +120,9 @@ end
     compile(prog; opt=0)
     compile(prog; ftz=false)
     compile(prog; prec_sqrt=true)
+
+    @test contains(compile(prog, ["-arch=compute_90"]), ".target sm_90")
+    compile(prog; generate_line_info=true)
 
     # unofficial ones
     @test contains(compile(prog; isa=v"6.0"), ".version 6.0")

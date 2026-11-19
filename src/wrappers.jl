@@ -139,13 +139,16 @@ function add!(prog::Program, ir::Union{String,Vector{UInt8}}, name=nothing;
     check(api(prog, ir, sizeof(ir), something(name, C_NULL)))
 end
 
+# options that are flags, without a value
+const FLAGS = Dict(:debug => "-g", :g => "-g", :generate_line_info => "-generate-line-info",
+                   :gen_lto => "-gen-lto", :nvvm_latest => "-nvvm-latest")
+
 # support specifying compiler options in a more user-friendly manner
-function kwargs_to_options(kwargs)
-    options = String[]
+function kwargs_to_options(options, kwargs)
+    options = Vector{String}(options)
     for (k, v) in kwargs
-        # -g doesn't take a 1/0
-        if k in (:debug, :g)
-            v && push!(options, "-g")
+        if haskey(FLAGS, k)
+            v && push!(options, FLAGS[k])
             continue
         end
 
@@ -177,39 +180,44 @@ function kwargs_to_options(kwargs)
 end
 
 """
-    verify(prog::Program; kwargs...)
+    verify(prog::Program, [options]; kwargs...)
 
 Verify the NVVM program.
 
 The same compiler options as for [`compile`](@ref) are supported.
 """
-function verify(prog::Program; kwargs...)
-    options = kwargs_to_options(kwargs)
+function verify(prog::Program, options::Vector{String}=String[]; kwargs...)
+    options = kwargs_to_options(options, kwargs)
     check(nvvmVerifyProgram(prog, length(options), options)) do _
         log(prog)
     end
 end
 
 """
-    compile(prog::Program; kwargs...)
+    compile(prog::Program, [options]; kwargs...)
 
 Link and compile all NVVM IR modules added to the NVVM program `prog` to PTX code.
 The target datalayout in the linked IR program is used to determine the address size.
 
-The following compiler options are supported by NVVM
+Compiler options can be passed verbatim as a vector of strings, e.g. `["-arch=compute_90"]`,
+or as keyword arguments, using slightly friendlier syntax:
 - `debug` or `g`: whether to enable debug information
+- `generate_line_info`: whether to generate line-number information
 - `opt`: the optimization level to use
 - `arch`: the compute architecture to target, e.g. `compute_75` or `v"7.5"`
 - `ftz`: flush denormal values to zero
 - `prec_sqrt`: whether to use use IEEE round-to-nearest sqrt, or an approximation
 - `prec_div`: whether to use IEEE round-to-nearest division, or an approximation
 - `fma`: enable FMA contraction
+- `gen_lto`: generate LTO-IR for nvJitLink instead of PTX
+- `nvvm_latest`: read the IR with libNVVM's current LLVM, instead of LLVM 7 (which
+  libNVVM uses for architectures before Blackwell)
 
 The following options are not officially supported by NVVM:
 - `isa`: which PTX instruction set to use, e.g., `v"6.1"`
 """
-function compile(prog::Program; kwargs...)
-    options = kwargs_to_options(kwargs)
+function compile(prog::Program, options::Vector{String}=String[]; kwargs...)
+    options = kwargs_to_options(options, kwargs)
     check(nvvmCompileProgram(prog, length(options), options)) do _
         log(prog)
     end
