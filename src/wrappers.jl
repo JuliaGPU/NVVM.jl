@@ -187,8 +187,9 @@ end
 """
     compile(prog::Program, [options]; kwargs...)
 
-Link and compile all NVVM IR modules added to the NVVM program `prog` to PTX code.
-The target datalayout in the linked IR program is used to determine the address size.
+Link and compile all NVVM IR modules added to the NVVM program `prog`, returning the
+generated PTX code (use `String` to convert it), or LTO-IR with the `gen_lto` option, as
+bytes. The target datalayout in the linked IR program is used to determine the address size.
 
 Compiler options can be passed verbatim as a vector of strings, e.g. `["-arch=compute_90"]`,
 or as keyword arguments, using slightly friendlier syntax:
@@ -210,14 +211,16 @@ function compile(prog::Program, options::Vector{String}=String[]; kwargs...)
         log(prog)
     end
 
-    # get result
     result_size = Ref{Csize_t}()
     check(nvvmGetCompiledResultSize(prog, result_size))
     result = Vector{UInt8}(undef, result_size[])
-    GC.@preserve result begin
-        check(nvvmGetCompiledResult(prog, pointer(result)))
-        unsafe_string(pointer(result))
+    check(nvvmGetCompiledResult(prog, result))
+
+    # PTX is NUL-terminated
+    if !in("-gen-lto", options) && !isempty(result) && result[end] == 0x00
+        resize!(result, length(result) - 1)
     end
+    return result
 end
 
 function log(prog::Program)
