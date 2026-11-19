@@ -38,6 +38,7 @@ end
 ## general
 
 function version()
+    check_available()
     major = Ref{Cint}()
     minor = Ref{Cint}()
     check(nvvmVersion(major, minor))
@@ -45,6 +46,7 @@ function version()
 end
 
 function ir_version()
+    check_available()
     majorIR = Ref{Cint}()
     minorIR = Ref{Cint}()
     majorDbg = Ref{Cint}()
@@ -52,6 +54,35 @@ function ir_version()
     check(nvvmIRVersion(majorIR, minorIR, majorDbg, minorDbg))
     return (ir=VersionNumber(majorIR[], minorIR[]),
             dbg=VersionNumber(majorDbg[], minorDbg[]))
+end
+
+"""
+    NVVM.toolkit_version()
+
+The version of the CUDA toolkit that libNVVM comes from. [`NVVM.version`](@ref) doesn't
+identify it, as it stays the same across toolkit releases.
+"""
+function toolkit_version()
+    check_available()
+    return CUDA_Compiler.cuda_version
+end
+
+"""
+    NVVM.llvm_version(arch::String)
+
+The major version of the LLVM IR that libNVVM reads for architecture `arch` (e.g.
+`"compute_90"`) when not passed `-nvvm-latest`, or `nothing` if libNVVM doesn't support
+`arch` or predates this query (CUDA 13.2).
+"""
+function llvm_version(arch::String)
+    check_available()
+    supported = Libdl.dlopen(libnvvm) do handle
+        Libdl.dlsym(handle, :nvvmLLVMVersion; throw_error=false) !== nothing
+    end
+    supported || return nothing
+    major = Ref{Cint}()
+    nvvmLLVMVersion(arch, major) == NVVM_SUCCESS || return nothing
+    return Int(major[])
 end
 
 
@@ -68,6 +99,7 @@ mutable struct Program
     handle::nvvmProgram
 
     function Program()
+        check_available()
         handle_ref = Ref{nvvmProgram}()
         check(nvvmCreateProgram(handle_ref))
         obj = new(handle_ref[])
@@ -84,74 +116,68 @@ function unsafe_destroy!(prog::Program)
     end
 end
 
-function downgrade_ir(ir::String, version::VersionNumber)
-    input_io = Pipe()
-    output_io = Pipe()
-    error_io = Pipe()
-
-    cmd = `$(llvm_as()) --bitcode-version=$(version.major).$(version.minor) -o -`
-    proc = run(pipeline(cmd, stdout=output_io, stderr=error_io, stdin=input_io); wait=false)
-    close(output_io.in)
-    close(error_io.in)
-
-    writer = @async begin
-        write(input_io, ir)
-        close(input_io)
+# convert a module (textual IR or bitcode) to the bitcode format of an older LLVM
+function downgrade(ir::Union{String,Vector{UInt8}}, version::VersionNumber)
+    buffer = Ref{Ptr{Cvoid}}(C_NULL)
+    message = Ref{Cstring}(C_NULL)
+    status = @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGDowngrade(
+        ir::Ptr{UInt8}, sizeof(ir)::Csize_t, version.major::Cuint, version.minor::Cuint,
+        buffer::Ptr{Ptr{Cvoid}}, message::Ptr{Cstring})::Cint
+    try
+        if status != 0
+            details = message[] == C_NULL ? "" : ":\n" * unsafe_string(message[])
+            error("Failed to downgrade IR to LLVM $(version.major).$(version.minor)$details")
+        end
+        start = @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGGetBufferStart(
+            buffer[]::Ptr{Cvoid})::Ptr{UInt8}
+        size = @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGGetBufferSize(
+            buffer[]::Ptr{Cvoid})::Csize_t
+        return copy(unsafe_wrap(Array, start, size))
+    finally
+        # both accept null
+        @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGDisposeMessage(
+            message[]::Cstring)::Cvoid
+        @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGDisposeMemoryBuffer(
+            buffer[]::Ptr{Cvoid})::Cvoid
     end
-    output_reader = @async read(output_io)
-
-    if !success(proc)
-        error_reader = @async read(error_io, String)
-        errors = fetch(error_reader)
-        error("Failed to downgrade IR:\n$(errors)")
-    end
-    fetch(output_reader)
 end
 
 """
-    add!(prog::Program, ir::String,         [name]; lazy=false, downgrade=true)
-    add!(prog::Program, bitcode::Vector,    [name]; lazy=false)
+    add!(prog::Program, ir::Union{String,Vector{UInt8}}, [name];
+         lazy=false, downgrade=ir isa String)
 
-Add IR to the NVVM program `prog`. The module can be provided as a string containing textual
-IR, or a byte vector containing bitcode. If `name` is specified, it will be used as the name
-of the module. If `lazy` is set, only symbols that are required by non-lazy modules will be
-included in the linked IR program. If `downgrade` is set, the IR will be downgraded to an
-appropriate version before being added.
+Add a module to the NVVM program `prog`, as textual IR or as bitcode. libNVVM reads it as
+LLVM 7 IR, unless the target architecture or the `-nvvm-latest` option selects its current
+LLVM. If `downgrade` is set, which it is by default for textual IR, the module is first
+converted to LLVM 7 bitcode; that accepts IR from any LLVM up to the downgrader's own.
+
+If `name` is specified, it will be used as the name of the module. If `lazy` is set, only
+symbols that are required by non-lazy modules will be included in the linked program;
+libNVVM only supports that for bitcode.
 """
-add!
-
-function add!(prog::Program, ir::String, name=nothing; lazy::Bool=false, downgrade::Bool=true)
-    api = lazy ? nvvmLazyAddModuleToProgram : nvvmAddModuleToProgram
-
-    # downgrade the module to NVVM IR
+function add!(prog::Program, ir::Union{String,Vector{UInt8}}, name=nothing;
+              lazy::Bool=false, downgrade::Bool=ir isa String)
     if downgrade
-        bitcode = downgrade_ir(ir, v"7.0")
-        api(prog, bitcode, sizeof(bitcode), something(name, C_NULL))
-    else
-        api(prog, ir, sizeof(ir), something(name, C_NULL))
+        ir = NVVM.downgrade(ir, v"7.0")
     end
-end
-function add!(prog::Program, bitcode::Vector, name=nothing; lazy::Bool=false)
+
+    # libNVVM accepts lazy textual modules, but then fails to compile without a message
+    lazy && ir isa String &&
+        throw(ArgumentError("libNVVM only supports adding bitcode modules lazily"))
     api = lazy ? nvvmLazyAddModuleToProgram : nvvmAddModuleToProgram
-    api(prog, bitcode, sizeof(bitcode), something(name, C_NULL))
+    check(api(prog, ir, sizeof(ir), something(name, C_NULL)))
 end
+
+# options that are flags, without a value
+const FLAGS = Dict(:debug => "-g", :g => "-g", :generate_line_info => "-generate-line-info",
+                   :gen_lto => "-gen-lto", :nvvm_latest => "-nvvm-latest")
 
 # support specifying compiler options in a more user-friendly manner
-function kwargs_to_options(kwargs)
-    options = String[]
+function kwargs_to_options(options, kwargs)
+    options = Vector{String}(options)
     for (k, v) in kwargs
-        # -g doesn't take a 1/0
-        if k in (:debug, :g)
-            v && push!(options, "-g")
-            continue
-        end
-
-        # -isa is not supported and bypasses the official API
-        if k == :isa
-            for phase in ("opt", "llc")
-                # XXX: also lnk on libNVVM from CUDA 12.4
-                push!(options, "-X$phase", "-mattr=+ptx$(v.major)$(v.minor)")
-            end
+        if haskey(FLAGS, k)
+            v && push!(options, FLAGS[k])
             continue
         end
 
@@ -174,51 +200,56 @@ function kwargs_to_options(kwargs)
 end
 
 """
-    verify(prog::Program; kwargs...)
+    verify(prog::Program, [options]; kwargs...)
 
 Verify the NVVM program.
 
 The same compiler options as for [`compile`](@ref) are supported.
 """
-function verify(prog::Program; kwargs...)
-    options = kwargs_to_options(kwargs)
+function verify(prog::Program, options::Vector{String}=String[]; kwargs...)
+    options = kwargs_to_options(options, kwargs)
     check(nvvmVerifyProgram(prog, length(options), options)) do _
         log(prog)
     end
 end
 
 """
-    compile(prog::Program; kwargs...)
+    compile(prog::Program, [options]; kwargs...)
 
-Link and compile all NVVM IR modules added to the NVVM program `prog` to PTX code.
-The target datalayout in the linked IR program is used to determine the address size.
+Link and compile all NVVM IR modules added to the NVVM program `prog`, returning the
+generated PTX code (use `String` to convert it), or LTO-IR with the `gen_lto` option, as
+bytes. The target datalayout in the linked IR program is used to determine the address size.
 
-The following compiler options are supported by NVVM
+Compiler options can be passed verbatim as a vector of strings, e.g. `["-arch=compute_90"]`,
+or as keyword arguments, using slightly friendlier syntax:
 - `debug` or `g`: whether to enable debug information
+- `generate_line_info`: whether to generate line-number information
 - `opt`: the optimization level to use
 - `arch`: the compute architecture to target, e.g. `compute_75` or `v"7.5"`
 - `ftz`: flush denormal values to zero
 - `prec_sqrt`: whether to use use IEEE round-to-nearest sqrt, or an approximation
 - `prec_div`: whether to use IEEE round-to-nearest division, or an approximation
 - `fma`: enable FMA contraction
-
-The following options are not officially supported by NVVM:
-- `isa`: which PTX instruction set to use, e.g., `v"6.1"`
+- `gen_lto`: generate LTO-IR for nvJitLink instead of PTX
+- `nvvm_latest`: read the IR with libNVVM's current LLVM, instead of LLVM 7 (which
+  libNVVM uses for architectures before Blackwell)
 """
-function compile(prog::Program; kwargs...)
-    options = kwargs_to_options(kwargs)
+function compile(prog::Program, options::Vector{String}=String[]; kwargs...)
+    options = kwargs_to_options(options, kwargs)
     check(nvvmCompileProgram(prog, length(options), options)) do _
         log(prog)
     end
 
-    # get result
     result_size = Ref{Csize_t}()
     check(nvvmGetCompiledResultSize(prog, result_size))
     result = Vector{UInt8}(undef, result_size[])
-    GC.@preserve result begin
-        check(nvvmGetCompiledResult(prog, pointer(result)))
-        unsafe_string(pointer(result))
+    check(nvvmGetCompiledResult(prog, result))
+
+    # PTX is NUL-terminated
+    if !in("-gen-lto", options) && !isempty(result) && result[end] == 0x00
+        resize!(result, length(result) - 1)
     end
+    return result
 end
 
 function log(prog::Program)

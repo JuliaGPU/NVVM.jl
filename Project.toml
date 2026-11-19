@@ -1,15 +1,19 @@
 name = "NVVM"
 uuid = "423072a2-8eda-41a8-b560-ab106c23935b"
 authors = ["Tim Besard <tim.besard@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+CUDA_Compiler_jll = "d1e2174e-dfdc-576e-b43e-73b79eb1aca8"
+CUDA_Runtime_Discovery = "1af6417a-86b4-443c-805f-a4643ffb695f"
 LLVMDowngrader_jll = "f52de702-fb25-5922-94ba-81dd59b07444"
-libNVVM_jll = "6f58c745-96ce-5283-a1a3-a6a4b3939f59"
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 
 [compat]
 CEnum = "0.4, 0.5"
-LLVMDowngrader_jll = "0.6.0"
-julia = "1.6"
-libNVVM_jll = "~4.0.5"
+CUDA_Compiler_jll = "0.6.2"
+CUDA_Runtime_Discovery = "2.1.1"
+LLVMDowngrader_jll = "0.12"
+Libdl = "1"
+julia = "1.10"

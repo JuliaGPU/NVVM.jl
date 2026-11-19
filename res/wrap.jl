@@ -5,7 +5,7 @@ using Clang.Generators
 
 using JuliaFormatter
 
-using libNVVM_jll
+using CUDA_Compiler_jll
 
 function wrap(name, headers; targets=headers, defines=[], include_dirs=[])
     args = get_default_args()
@@ -47,8 +47,8 @@ function wrap(name, headers; targets=headers, defines=[], include_dirs=[])
 end
 
 function main(name="all")
-    @assert libNVVM_jll.is_available()
-    nvvm = joinpath(libNVVM_jll.artifact_dir, "include")
+    @assert CUDA_Compiler_jll.is_available()
+    nvvm = joinpath(CUDA_Compiler_jll.artifact_dir, "nvvm", "include")
     wrap("nvvm", ["$nvvm/nvvm.h"])
 end
 

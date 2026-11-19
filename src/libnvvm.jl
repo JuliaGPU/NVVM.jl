@@ -1,4 +1,4 @@
-using CEnum
+using CEnum: CEnum, @cenum
 
 @cenum nvvmResult::UInt32 begin
     NVVM_SUCCESS = 0
@@ -25,6 +25,10 @@ end
 function nvvmIRVersion(majorIR, minorIR, majorDbg, minorDbg)
     @ccall libnvvm.nvvmIRVersion(majorIR::Ptr{Cint}, minorIR::Ptr{Cint},
                                  majorDbg::Ptr{Cint}, minorDbg::Ptr{Cint})::nvvmResult
+end
+
+function nvvmLLVMVersion(arch, major)
+    @ccall libnvvm.nvvmLLVMVersion(arch::Ptr{Cchar}, major::Ptr{Cint})::nvvmResult
 end
 
 mutable struct _nvvmProgram end
