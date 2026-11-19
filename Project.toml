@@ -1,7 +1,7 @@
 name = "NVVM"
 uuid = "423072a2-8eda-41a8-b560-ab106c23935b"
 authors = ["Tim Besard <tim.besard@gmail.com>"]
-version = "0.2.0"
+version = "0.1.0"
 
 [deps]
 CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
