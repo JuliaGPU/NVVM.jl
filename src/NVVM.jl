@@ -2,7 +2,7 @@ module NVVM
 
 using CEnum: @cenum
 
-using LLVMDowngrader_jll
+import LLVMDowngrader_jll
 
 # libNVVM comes from the same toolkit as the rest of the CUDA compiler (e.g. `ptxas`), which
 # CUDA_Compiler_jll selects, or which is discovered locally when that JLL is configured so

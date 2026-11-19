@@ -87,56 +87,56 @@ function unsafe_destroy!(prog::Program)
     end
 end
 
-function downgrade_ir(ir::String, version::VersionNumber)
-    input_io = Pipe()
-    output_io = Pipe()
-    error_io = Pipe()
-
-    cmd = `$(llvm_as()) --bitcode-version=$(version.major).$(version.minor) -o -`
-    proc = run(pipeline(cmd, stdout=output_io, stderr=error_io, stdin=input_io); wait=false)
-    close(output_io.in)
-    close(error_io.in)
-
-    writer = @async begin
-        write(input_io, ir)
-        close(input_io)
+# convert a module (textual IR or bitcode) to the bitcode format of an older LLVM
+function downgrade(ir::Union{String,Vector{UInt8}}, version::VersionNumber)
+    buffer = Ref{Ptr{Cvoid}}(C_NULL)
+    message = Ref{Cstring}(C_NULL)
+    status = @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGDowngrade(
+        ir::Ptr{UInt8}, sizeof(ir)::Csize_t, version.major::Cuint, version.minor::Cuint,
+        buffer::Ptr{Ptr{Cvoid}}, message::Ptr{Cstring})::Cint
+    try
+        if status != 0
+            details = message[] == C_NULL ? "" : ":\n" * unsafe_string(message[])
+            error("Failed to downgrade IR to LLVM $(version.major).$(version.minor)$details")
+        end
+        start = @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGGetBufferStart(
+            buffer[]::Ptr{Cvoid})::Ptr{UInt8}
+        size = @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGGetBufferSize(
+            buffer[]::Ptr{Cvoid})::Csize_t
+        return copy(unsafe_wrap(Array, start, size))
+    finally
+        # both accept null
+        @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGDisposeMessage(
+            message[]::Cstring)::Cvoid
+        @ccall LLVMDowngrader_jll.libllvm_downgrade.LLVMDGDisposeMemoryBuffer(
+            buffer[]::Ptr{Cvoid})::Cvoid
     end
-    output_reader = @async read(output_io)
-
-    if !success(proc)
-        error_reader = @async read(error_io, String)
-        errors = fetch(error_reader)
-        error("Failed to downgrade IR:\n$(errors)")
-    end
-    fetch(output_reader)
 end
 
 """
-    add!(prog::Program, ir::String,         [name]; lazy=false, downgrade=true)
-    add!(prog::Program, bitcode::Vector,    [name]; lazy=false)
+    add!(prog::Program, ir::Union{String,Vector{UInt8}}, [name];
+         lazy=false, downgrade=ir isa String)
 
-Add IR to the NVVM program `prog`. The module can be provided as a string containing textual
-IR, or a byte vector containing bitcode. If `name` is specified, it will be used as the name
-of the module. If `lazy` is set, only symbols that are required by non-lazy modules will be
-included in the linked IR program. If `downgrade` is set, the IR will be downgraded to an
-appropriate version before being added.
+Add a module to the NVVM program `prog`, as textual IR or as bitcode. libNVVM reads it as
+LLVM 7 IR, unless the target architecture or the `-nvvm-latest` option selects its current
+LLVM. If `downgrade` is set, which it is by default for textual IR, the module is first
+converted to LLVM 7 bitcode; that accepts IR from any LLVM up to the downgrader's own.
+
+If `name` is specified, it will be used as the name of the module. If `lazy` is set, only
+symbols that are required by non-lazy modules will be included in the linked program;
+libNVVM only supports that for bitcode.
 """
-add!
-
-function add!(prog::Program, ir::String, name=nothing; lazy::Bool=false, downgrade::Bool=true)
-    api = lazy ? nvvmLazyAddModuleToProgram : nvvmAddModuleToProgram
-
-    # downgrade the module to NVVM IR
+function add!(prog::Program, ir::Union{String,Vector{UInt8}}, name=nothing;
+              lazy::Bool=false, downgrade::Bool=ir isa String)
     if downgrade
-        bitcode = downgrade_ir(ir, v"7.0")
-        api(prog, bitcode, sizeof(bitcode), something(name, C_NULL))
-    else
-        api(prog, ir, sizeof(ir), something(name, C_NULL))
+        ir = NVVM.downgrade(ir, v"7.0")
     end
-end
-function add!(prog::Program, bitcode::Vector, name=nothing; lazy::Bool=false)
+
+    # libNVVM accepts lazy textual modules, but then fails to compile without a message
+    lazy && ir isa String &&
+        throw(ArgumentError("libNVVM only supports adding bitcode modules lazily"))
     api = lazy ? nvvmLazyAddModuleToProgram : nvvmAddModuleToProgram
-    api(prog, bitcode, sizeof(bitcode), something(name, C_NULL))
+    check(api(prog, ir, sizeof(ir), something(name, C_NULL)))
 end
 
 # support specifying compiler options in a more user-friendly manner
