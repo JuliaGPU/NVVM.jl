@@ -27,6 +27,18 @@ dummy_bitcode = LLVM.Context() do ctx
     convert(Vector{UInt8}, mod)
 end
 
+@testset "versions" begin
+    @test NVVM.is_available()
+    @test NVVM.toolkit_version() isa VersionNumber
+    @test NVVM.version() isa VersionNumber
+    @test NVVM.ir_version().ir isa VersionNumber
+    if NVVM.toolkit_version() >= v"13.2"
+        @test NVVM.llvm_version("compute_90") == 7
+        @test NVVM.llvm_version("compute_100") > 7
+    end
+    @test NVVM.llvm_version("compute_1") === nothing
+end
+
 @testset "smoke test" begin
     let prog = Program()
         add!(prog, dummy_ir)

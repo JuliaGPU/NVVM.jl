@@ -56,6 +56,35 @@ function ir_version()
             dbg=VersionNumber(majorDbg[], minorDbg[]))
 end
 
+"""
+    NVVM.toolkit_version()
+
+The version of the CUDA toolkit that libNVVM comes from. [`NVVM.version`](@ref) doesn't
+identify it, as it stays the same across toolkit releases.
+"""
+function toolkit_version()
+    check_available()
+    return CUDA_Compiler.cuda_version
+end
+
+"""
+    NVVM.llvm_version(arch::String)
+
+The major version of the LLVM IR that libNVVM reads for architecture `arch` (e.g.
+`"compute_90"`) when not passed `-nvvm-latest`, or `nothing` if libNVVM doesn't support
+`arch` or predates this query (CUDA 13.2).
+"""
+function llvm_version(arch::String)
+    check_available()
+    supported = Libdl.dlopen(libnvvm) do handle
+        Libdl.dlsym(handle, :nvvmLLVMVersion; throw_error=false) !== nothing
+    end
+    supported || return nothing
+    major = Ref{Cint}()
+    nvvmLLVMVersion(arch, major) == NVVM_SUCCESS || return nothing
+    return Int(major[])
+end
+
 
 ## compilation
 
