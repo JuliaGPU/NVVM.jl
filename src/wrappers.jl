@@ -152,15 +152,6 @@ function kwargs_to_options(options, kwargs)
             continue
         end
 
-        # -isa is not supported and bypasses the official API
-        if k == :isa
-            for phase in ("opt", "llc")
-                # XXX: also lnk on libNVVM from CUDA 12.4
-                push!(options, "-X$phase", "-mattr=+ptx$(v.major)$(v.minor)")
-            end
-            continue
-        end
-
         # support version numbers for specifying the compute architecture
         if k == :arch && v isa VersionNumber
             v = "compute_$(v.major)$(v.minor)"
@@ -212,9 +203,6 @@ or as keyword arguments, using slightly friendlier syntax:
 - `gen_lto`: generate LTO-IR for nvJitLink instead of PTX
 - `nvvm_latest`: read the IR with libNVVM's current LLVM, instead of LLVM 7 (which
   libNVVM uses for architectures before Blackwell)
-
-The following options are not officially supported by NVVM:
-- `isa`: which PTX instruction set to use, e.g., `v"6.1"`
 """
 function compile(prog::Program, options::Vector{String}=String[]; kwargs...)
     options = kwargs_to_options(options, kwargs)

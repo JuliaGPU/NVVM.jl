@@ -123,10 +123,6 @@ end
 
     @test contains(compile(prog, ["-arch=compute_90"]), ".target sm_90")
     compile(prog; generate_line_info=true)
-
-    # unofficial ones
-    @test contains(compile(prog; isa=v"6.0"), ".version 6.0")
-    @test contains(compile(prog; isa=v"6.1"), ".version 6.1")
 end
 
 end
