@@ -1,3 +1,4 @@
 [deps]
+CUDA_Compiler_jll = "d1e2174e-dfdc-576e-b43e-73b79eb1aca8"
 LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

@@ -38,6 +38,7 @@ end
 ## general
 
 function version()
+    check_available()
     major = Ref{Cint}()
     minor = Ref{Cint}()
     check(nvvmVersion(major, minor))
@@ -45,6 +46,7 @@ function version()
 end
 
 function ir_version()
+    check_available()
     majorIR = Ref{Cint}()
     minorIR = Ref{Cint}()
     majorDbg = Ref{Cint}()
@@ -68,6 +70,7 @@ mutable struct Program
     handle::nvvmProgram
 
     function Program()
+        check_available()
         handle_ref = Ref{nvvmProgram}()
         check(nvvmCreateProgram(handle_ref))
         obj = new(handle_ref[])
